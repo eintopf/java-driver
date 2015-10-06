@@ -4,6 +4,7 @@
 
 - [bug] JAVA-988: Metadata.handleId should handle escaped double quotes.
 - [bug] JAVA-983: QueryBuilder cannot handle collections containing function calls.
+- [bug] JAVA-937: TypeCodec static initializers not always correctly executed.
 
 
 ### 2.1.9

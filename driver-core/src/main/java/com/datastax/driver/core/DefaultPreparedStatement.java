@@ -41,6 +41,7 @@ public class DefaultPreparedStatement implements PreparedStatement {
     volatile boolean traceQuery;
     volatile RetryPolicy retryPolicy;
     volatile ImmutableMap<String, ByteBuffer> outgoingPayload;
+    volatile Boolean idempotent;
 
     private DefaultPreparedStatement(PreparedId id, String query, String queryKeyspace, Map<String, ByteBuffer> incomingPayload, Cluster cluster) {
         this.preparedId = id;
@@ -218,5 +219,15 @@ public class DefaultPreparedStatement implements PreparedStatement {
     @Override
     public CodecRegistry getCodecRegistry() {
         return cluster.getConfiguration().getCodecRegistry();
+    }
+
+    @Override
+    public PreparedStatement setIdempotent(Boolean idempotent) {
+        this.idempotent = idempotent;
+        return this;
+    }
+
+    public Boolean isIdempotent() {
+        return this.idempotent;
     }
 }

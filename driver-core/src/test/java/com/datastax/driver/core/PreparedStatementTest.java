@@ -664,4 +664,42 @@ public class PreparedStatementTest extends CCMBridge.PerClassSingleNodeCluster {
         }
         fail("Did not find '" + toFind + "' in trace");
     }
+
+    @Test(groups = "short")
+    public void should_propagate_idempotence_in_statements() {
+        session.execute(String.format("CREATE TABLE %s.idempotencetest (i int PRIMARY KEY)", keyspace));
+
+        SimpleStatement statement;
+        PreparedStatement prepared;
+        BoundStatement bound;
+
+        statement = session.newSimpleStatement(String.format("SELECT * FROM %s.idempotencetest WHERE i = ?", keyspace));
+
+        prepared = session.prepare(statement);
+        bound = prepared.bind(1);
+
+//      This may not work if the default idempotence for regular statements change.
+//      Which is likely to happen with JAVA-819
+        assertThat(prepared.isIdempotent()).isNull();
+        assertThat(bound.isIdempotent()).isNull();
+
+        statement.setIdempotent(true);
+        prepared = session.prepare(statement);
+        bound = prepared.bind(1);
+
+        assertThat(prepared.isIdempotent()).isTrue();
+        assertThat(bound.isIdempotent()).isTrue();
+
+        statement.setIdempotent(false);
+        prepared = session.prepare(statement);
+        bound = prepared.bind(1);
+
+        assertThat(prepared.isIdempotent()).isFalse();
+        assertThat(bound.isIdempotent()).isFalse();
+
+        prepared.setIdempotent(true);
+        bound = prepared.bind(1);
+
+        assertThat(bound.isIdempotent()).isTrue();
+    }
 }

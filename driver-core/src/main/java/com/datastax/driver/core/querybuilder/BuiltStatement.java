@@ -184,6 +184,12 @@ public abstract class BuiltStatement extends RegularStatement {
     }
 
     @Override
+    public List<ValueDefinition> getValueDefinitions() {
+        maybeRebuildCache();
+        return super.getValueDefinitions();
+    }
+
+    @Override
     public List<ByteBuffer> getValues() {
         maybeRebuildCache();
         return super.getValues();
@@ -231,8 +237,8 @@ public abstract class BuiltStatement extends RegularStatement {
      * for performance reasons, the query builder will not serialize all values
      * provided to strings. This means that the {@link #getQueryString} may
      * return a query string with bind markers (where and when is at the
-     * discretion of the builder) and {@link #getValues} will return the binary
-     * values for those markers. This method allows to force the builder to not
+     * discretion of the builder) and {@link RegularStatement#getValueDefinitions() values}
+     * will be set for those markers. This method allows to force the builder to not
      * generate binary values but rather to serialize them all in the query
      * string. In practice, this means that if you call {@code
      * setForceNoValues(true)}, you are guaranteed that {@code getValues()} will

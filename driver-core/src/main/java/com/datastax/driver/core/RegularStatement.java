@@ -21,6 +21,7 @@ import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import com.google.common.collect.Lists;
 import com.google.common.reflect.TypeToken;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -43,22 +44,98 @@ public abstract class RegularStatement extends Statement implements GettableData
     // TODO move to TypeTokens once this is merged with java846
     private static final TypeToken<Object> OBJECT_TYPE = TypeToken.of(Object.class);
 
+    /**
+     * Metadata describing a value associated with a {@link RegularStatement}.
+     * <p>
+     * Note that this information is based solely on the methods that were used to set values on the statement.
+     * In particular, there is no validation that the value names or indices match the placeholders in the statement's
+     * query string, or that the data types correspond to the actual database schema.
+     * Regular statements are only validated on the server side.
+     */
+    public static class ValueDefinition {
+        private final int index;
+        private final String name;
+        private final DataType type;
+
+        ValueDefinition(int index, DataType type) {
+            this(index, null, type);
+        }
+
+        ValueDefinition(String name, DataType type) {
+            this(-1, name, type);
+        }
+
+        private ValueDefinition(int index, String name, DataType type) {
+            this.index = index;
+            this.name = name;
+            this.type = type;
+        }
+
+        /**
+         * Return the index of the value in the statement.
+         * <p>
+         * This information is set if a positional setter (for example {@link #setDouble(int, double)}) was used to set the value.
+         * Note that the variables of a given statement are either all named or all positional.
+         *
+         * @return the index, or -1 if named variables were used on this statement.
+         */
+        public int getIndex() {
+            return index;
+        }
+
+        /**
+         * Return the name of the value in the statement.
+         * <p>
+         * This information is set if a named setter (for example {@link #setDouble(String, double)}) was used to set the value.
+         * Note that the variables of a given statement are either all named or all positional.
+         *
+         * @return the name, or {@code null} if positional variables were used on this statement.
+         */
+        public String getName() {
+            return name;
+        }
+
+        /**
+         * Return the CQL data type inferred for the value.
+         * <p>
+         * This information is determined from the method that was used to set the value. For example, if
+         * {@link #setDouble(String, double)} was used, it will be {@link DataType#cdouble()}. For non-standard types, it will
+         * be the CQL type of the first {@link CodecRegistry custom codec} that can handle the value.
+         * The only case where the CQL type can't be inferred is if the value was set with {@link #setBytesUnsafe(int, ByteBuffer)}
+         * or {@link #setToNull(int)}; then this method will return {@code null}.
+         *
+         * @return the data type, or {@code null} if this variable was set with {@link #setBytesUnsafe(int, ByteBuffer)}
+         * or {@link #setToNull(int)}.
+         */
+        public DataType getType() {
+            return type;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("%s:%s",
+                (index >= 0) ? index : name,
+                (type == null) ? "<unknown type>" : type.toString());
+        }
+    }
+
     // A value that was set on the statement.
-    // Only values that were set with setBytesUnsafe are direct instances of this class, other setters produce TypedValues.
     protected class Value {
+
+        private final ValueDefinition definition;
 
         // The serialized form that will be sent to Cassandra alongside the query
         final ByteBuffer bytes;
 
-        Value(ByteBuffer bytes) {
+        Value(ValueDefinition definition, ByteBuffer bytes) {
+            this.definition = definition;
             this.bytes = bytes;
         }
 
         <V> V as(TypeToken<V> javaType) {
             if (OBJECT_TYPE.equals(javaType)) { // we're handling a getObject() call
-                Object o = asObject();
                 @SuppressWarnings("unchecked")
-                V v = (V)o; // Since V is Object, this is a safe cast
+                V v = (V)asObject(); // Since V is Object, this is a safe cast
                 return v;
             } else { // we're handling a typed getter call
                 assert javaType != null;
@@ -75,40 +152,19 @@ public abstract class RegularStatement extends Statement implements GettableData
         }
 
         protected <V> TypeCodec<V> codecFor(TypeToken<V> javaType) {
-            return codecRegistry.codecFor(javaType);
+            return codecRegistry.codecFor(definition.type, javaType);
         }
 
         protected Object asObject() {
+            if (isNull())
+                return null;
+
             // If the value was set with setBytesUnsafe, we don't have an original object to return, so by default
             // return a copy of the buffer itself.
-            return bytes.duplicate();
-        }
+            if (definition.type == null)
+                return bytes.duplicate();
 
-    }
-
-    protected class TypedValue extends Value {
-
-        // The original value that was set. We store it in order to return it from getObject().
-        private final Object original;
-        // The CQL type that was inferred when setting the value (will be null if the original value was null).
-        private final DataType cqlType;
-
-        TypedValue(ByteBuffer bytes, Object original, DataType cqlType) {
-            super(bytes);
-            this.original = original;
-            this.cqlType = cqlType;
-        }
-
-        @Override
-        protected <V> TypeCodec<V> codecFor(TypeToken<V> javaType) {
-            return codecRegistry.codecFor(cqlType, javaType);
-        }
-
-        @Override
-        protected Object asObject() {
-            // Note that, instead of storing the original object, we could also have deserialized bytes with the default codec
-            // for cqlType, but that might produce a different Java type, which would have been more confusing.
-            return original;
+            return with(codecRegistry.codecFor(definition.type));
         }
 
     }
@@ -136,6 +192,26 @@ public abstract class RegularStatement extends Statement implements GettableData
      * @return a valid CQL query string.
      */
     public abstract String getQueryString();
+
+    /**
+     * Returns the definitions of the values that were set on this statement.
+     * <p>
+     * Note that this information is based solely on the methods that were used to set values on the statement.
+     * In particular, there is no guarantee that the variables match the placeholders in the query string.
+     * The only guarantee is that variables of a given statement are either all named or all positional, and
+     * that if they are positional, the list will be sorted by ascending index.
+     * <p>
+     * To retrieve a given value, use the getter methods on this class.
+     *
+     * @return the list of definitions.
+     */
+    public List<ValueDefinition> getValueDefinitions() {
+        List<ValueDefinition> definitions = Lists.newArrayListWithCapacity(values.size());
+        for (Value value : values.values()) {
+            definitions.add(value.definition);
+        }
+        return definitions;
+    }
 
     /**
      * The values to use for this statement.
@@ -291,12 +367,12 @@ public abstract class RegularStatement extends Statement implements GettableData
 
     @Override
     public RegularStatement setToNull(int i) {
-        return setInternal(i, new TypedValue(null, null, null));
+        return setInternal(i, new Value(new ValueDefinition(i, null), null));
     }
 
     @Override
     public RegularStatement setToNull(String name) {
-        return setInternal(name, new TypedValue(null, null, null));
+        return setInternal(name, new Value(new ValueDefinition(name, null), null));
     }
 
     @Override
@@ -321,12 +397,12 @@ public abstract class RegularStatement extends Statement implements GettableData
 
     @Override
     public RegularStatement setBytesUnsafe(int i, ByteBuffer v) {
-        return setInternal(i, new Value(v));
+        return setInternal(i, new Value(new ValueDefinition(i, null), v));
     }
 
     @Override
     public RegularStatement setBytesUnsafe(String name, ByteBuffer v) {
-        return setInternal(name, new Value(v));
+        return setInternal(name, new Value(new ValueDefinition(name, null), v));
     }
 
     @Override
@@ -932,13 +1008,13 @@ public abstract class RegularStatement extends Statement implements GettableData
     @Override
     public <V> RegularStatement set(int i, V v, TypeCodec<V> codec) {
         ByteBuffer bytes = codec.serialize(v, protocolVersion);
-        return setInternal(i, new TypedValue(bytes, v, codec.getCqlType()));
+        return setInternal(i, new Value(new ValueDefinition(i ,codec.getCqlType()), bytes));
     }
 
     @Override
     public <V> RegularStatement set(String name, V v, TypeCodec<V> codec) {
         ByteBuffer bytes = codec.serialize(v, protocolVersion);
-        return setInternal(name, new TypedValue(bytes, v, codec.getCqlType()));
+        return setInternal(name, new Value(new ValueDefinition(name, codec.getCqlType()), bytes));
     }
 
     /**

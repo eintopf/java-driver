@@ -177,7 +177,7 @@ public class DefaultPreparedStatement implements IdempotenceAwarePreparedStateme
         return preparedId;
     }
 
-    public PreparedStatement setIdempotent(boolean idempotent) {
+    public PreparedStatement setIdempotent(Boolean idempotent) {
         this.idempotent = idempotent;
         return this;
     }

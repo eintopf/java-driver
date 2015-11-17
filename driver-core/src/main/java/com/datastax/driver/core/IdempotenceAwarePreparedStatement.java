@@ -24,7 +24,7 @@ public interface IdempotenceAwarePreparedStatement extends PreparedStatement {
      * @param idempotent the new value.
      * @return this {@code IdempotenceAwarePreparedStatement} object.
      */
-    public PreparedStatement setIdempotent(boolean idempotent);
+    public PreparedStatement setIdempotent(Boolean idempotent);
 
     /**
      * Whether this statement is idempotent, i.e. whether it can be applied multiple times

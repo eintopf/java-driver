@@ -267,16 +267,6 @@ public abstract class RegularStatement extends Statement implements GettableData
     }
 
     /**
-     * The number of values for this statement, that is the size of the array
-     * that will be returned by {@link #getValues()}.
-     *
-     * @return the number of values.
-     */
-    public int valuesCount() {
-        return values.size();
-    }
-
-    /**
      * Bind values to the variables of this statement.
      *
      * This is a convenience method to bind all the variables of the

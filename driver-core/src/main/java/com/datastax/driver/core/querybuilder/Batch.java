@@ -19,7 +19,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.google.common.collect.Lists.newArrayListWithCapacity;
+import com.google.common.collect.Lists;
 
 import com.datastax.driver.core.CodecRegistry;
 import com.datastax.driver.core.ProtocolVersion;
@@ -124,7 +124,7 @@ public class Batch extends BuiltStatement {
             return super.getValues();
         // otherwise, at batch level we have no values,
         // but some of the child statements might have those
-        List<ByteBuffer> values = newArrayListWithCapacity(valuesCount());
+        List<ByteBuffer> values = Lists.newArrayList();
         for (RegularStatement statement : statements) {
             // skip built statements as we don't want
             // their values, they will be formatted as CQL literals instead
@@ -134,26 +134,6 @@ public class Batch extends BuiltStatement {
                 values.addAll(statement.getValues());
         }
         return values;
-    }
-
-    @Override
-    public int valuesCount() {
-        // if we don't have user-entered bind markers,
-        // all values will be collected at batch level
-        if (!hasBindMarkers)
-            return super.valuesCount();
-        // otherwise, at batch level we have no values,
-        // but some of the child statements might have those
-        int count = 0;
-        for (RegularStatement statement : statements) {
-            // skip built statements as we don't want
-            // their values, they will be formatted as CQL literals instead
-            if (statement instanceof BuiltStatement)
-                continue;
-            if (statement.hasValues())
-                count += statement.valuesCount();
-        }
-        return count;
     }
 
     @Override

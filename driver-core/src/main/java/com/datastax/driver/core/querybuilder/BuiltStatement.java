@@ -202,12 +202,6 @@ public abstract class BuiltStatement extends RegularStatement {
     }
 
     @Override
-    public int valuesCount() {
-        maybeRebuildCache();
-        return super.valuesCount();
-    }
-
-    @Override
     public Boolean isIdempotent() {
         // If a value was forced with setIdempotent, it takes priority
         if (idempotent != null)

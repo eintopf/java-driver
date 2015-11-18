@@ -1,5 +1,9 @@
 ## Changelog
 
+### 2.0.13 (in progress)
+- [bug] JAVA-995: Defunct connection even if initializing.
+
+
 ### 2.0.12
 
 - [bug] JAVA-950: Fix Cluster.connect with a case-sensitive keyspace.

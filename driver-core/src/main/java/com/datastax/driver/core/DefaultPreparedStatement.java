@@ -221,12 +221,19 @@ public class DefaultPreparedStatement implements PreparedStatement {
         return cluster.getConfiguration().getCodecRegistry();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public PreparedStatement setIdempotent(Boolean idempotent) {
         this.idempotent = idempotent;
         return this;
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public Boolean isIdempotent() {
         return this.idempotent;
     }

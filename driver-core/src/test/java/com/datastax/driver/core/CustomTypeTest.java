@@ -45,8 +45,6 @@ public class CustomTypeTest extends CCMBridge.PerClassSingleNodeCluster {
             + "org.apache.cassandra.db.marshal.UTF8Type,"
             + "org.apache.cassandra.db.marshal.Int32Type)");
 
-    public static final DataType LIST_OF_INTS = list(cint());
-
     @Override
     protected Collection<String> getTableDefinitions() {
         return Collections.singleton(
@@ -54,9 +52,9 @@ public class CustomTypeTest extends CCMBridge.PerClassSingleNodeCluster {
                 + "    k int,"
                 + "    c1 'DynamicCompositeType(s => UTF8Type, i => Int32Type)',"
                 + "    c2 'ReversedType(CompositeType(UTF8Type, Int32Type))'," // reversed translates to CLUSTERING ORDER BY DESC
-                + "    c3 'ListType(Int32Type)'," // translates to list<int>
+                + "    c3 'Int32Type'," // translates to int
                 + "    PRIMARY KEY (k, c1, c2)"
-                + ")"
+                + ") WITH COMPACT STORAGE"
         );
     }
 
@@ -67,11 +65,11 @@ public class CustomTypeTest extends CCMBridge.PerClassSingleNodeCluster {
 
         assertThat(table.getColumn("c1")).isClusteringColumn().hasType(CUSTOM_DYNAMIC_COMPOSITE);
         assertThat(table.getColumn("c2")).isClusteringColumn().hasType(CUSTOM_COMPOSITE).hasClusteringOrder(ClusteringOrder.DESC);
-        assertThat(table.getColumn("c3")).hasType(LIST_OF_INTS);
+        assertThat(table.getColumn("c3")).hasType(cint());
 
-        session.execute("INSERT INTO test(k, c1, c2, c3) VALUES (0, 's@foo:i@32', 'foo:32', [1,2,3])");
-        session.execute("INSERT INTO test(k, c1, c2, c3) VALUES (0, 'i@42', ':42', [2,3,4])");
-        session.execute("INSERT INTO test(k, c1, c2, c3) VALUES (0, 'i@12:i@3', 'foo', [3,4,5])");
+        session.execute("INSERT INTO test(k, c1, c2, c3) VALUES (0, 's@foo:i@32', 'foo:32', 1)");
+        session.execute("INSERT INTO test(k, c1, c2, c3) VALUES (0, 'i@42', ':42', 2)");
+        session.execute("INSERT INTO test(k, c1, c2, c3) VALUES (0, 'i@12:i@3', 'foo', 3)");
 
         ResultSet rs = session.execute("SELECT * FROM test");
 
@@ -79,24 +77,24 @@ public class CustomTypeTest extends CCMBridge.PerClassSingleNodeCluster {
 
         assertThat(r.getColumnDefinitions().getType("c1")).isEqualTo(CUSTOM_DYNAMIC_COMPOSITE);
         assertThat(r.getColumnDefinitions().getType("c2")).isEqualTo(CUSTOM_COMPOSITE);
-        assertThat(r.getColumnDefinitions().getType("c3")).isEqualTo(LIST_OF_INTS);
+        assertThat(r.getColumnDefinitions().getType("c3")).isEqualTo(cint());
 
         assertThat(r.getInt("k")).isEqualTo(0);
         assertThat(r.getBytesUnsafe("c1")).isEqualTo(serializeForDynamicCompositeType(12, 3));
         assertThat(r.getBytesUnsafe("c2")).isEqualTo(serializeForCompositeType("foo"));
-        assertThat(r.getList("c3", Integer.class)).isEqualTo(newArrayList(3,4,5));
+        assertThat(r.getInt("c3")).isEqualTo(3);
 
         r = rs.one();
         assertThat(r.getInt("k")).isEqualTo(0);
         assertThat(r.getBytesUnsafe("c1")).isEqualTo(serializeForDynamicCompositeType(42));
         assertThat(r.getBytesUnsafe("c2")).isEqualTo(serializeForCompositeType("", 42));
-        assertThat(r.getList("c3", Integer.class)).isEqualTo(newArrayList(2,3,4));
+        assertThat(r.getInt("c3")).isEqualTo(2);
 
         r = rs.one();
         assertThat(r.getInt("k")).isEqualTo(0);
         assertThat(r.getBytesUnsafe("c1")).isEqualTo(serializeForDynamicCompositeType("foo", 32));
         assertThat(r.getBytesUnsafe("c2")).isEqualTo(serializeForCompositeType("foo", 32));
-        assertThat(r.getList("c3", Integer.class)).isEqualTo(newArrayList(1,2,3));
+        assertThat(r.getInt("c3")).isEqualTo(1);
     }
 
 

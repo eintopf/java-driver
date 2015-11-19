@@ -69,7 +69,7 @@ class AnnotationParser {
         List<Field> ccs = new ArrayList<Field>();
         List<Field> rgs = new ArrayList<Field>();
 
-        for (Field field : entityClass.getDeclaredFields()) {
+        for (Field field : entityClass.getFields()) {
             if(field.isSynthetic() || (field.getModifiers() & Modifier.STATIC) == Modifier.STATIC)
                 continue;
 

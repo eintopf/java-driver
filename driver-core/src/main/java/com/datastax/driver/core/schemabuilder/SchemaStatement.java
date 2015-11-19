@@ -57,7 +57,13 @@ public abstract class SchemaStatement extends RegularStatement {
     }
 
     @Override
-    public List<ByteBuffer> getValues() {
+    protected List<ByteBuffer> getValues() {
+        // DDL statements never have values
+        return Collections.emptyList();
+    }
+
+    @Override
+    protected List<String> getValueNames() {
         // DDL statements never have values
         return Collections.emptyList();
     }

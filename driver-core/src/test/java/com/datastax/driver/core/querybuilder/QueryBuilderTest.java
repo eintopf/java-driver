@@ -776,7 +776,7 @@ public class QueryBuilderTest {
 
     @Test(groups = "unit", expectedExceptions = IllegalArgumentException.class)
     public void should_fail_if_built_statement_has_too_many_values() {
-        List<Object> values = Collections.<Object>nCopies(65535, "a");
+            List<Object> values = Collections.<Object>nCopies(65535, "a");
 
         // If the excessive count results from successive DSL calls, we don't check it on the fly so this statement works:
         BuiltStatement statement = builder.select().all().from("foo")
@@ -784,8 +784,8 @@ public class QueryBuilderTest {
             .and(in("baz", values.toArray()));
 
         // But we still want to check it client-side, to fail fast instead of sending a bad query to Cassandra.
-        // getValues() is called on any RegularStatement before we send it (see SessionManager.makeRequestMessage).
-        statement.getValues();
+        // getValueDefinitions() forces the statement to update its cache, which will check the number of values.
+        statement.getValueDefinitions();
     }
 
     @Test(groups = "unit")
@@ -864,7 +864,7 @@ public class QueryBuilderTest {
     public void should_not_serialize_raw_query_values() {
         RegularStatement select = builder.select().from("test").where(gt("i", raw("1")));
         assertThat(select.getQueryString()).doesNotContain("?");
-        assertThat(select.getValues()).isEmpty();
+        assertThat(select.getValueDefinitions()).isEmpty();
     }
 
     @Test(groups = "unit", expectedExceptions = { IllegalArgumentException.class })
@@ -906,7 +906,7 @@ public class QueryBuilderTest {
     public void should_not_attempt_to_serialize_function_calls_in_collections() {
         BuiltStatement query = builder.insertInto("foo").value("v", Sets.newHashSet(fcall("func", 1)));
         assertThat(query.getQueryString()).isEqualTo("INSERT INTO foo (v) VALUES ({func(1)});");
-        assertThat(query.getValues()).isNullOrEmpty();
+        assertThat(query.getValueDefinitions()).isNullOrEmpty();
     }
 
     @Test(groups = "unit")
@@ -914,7 +914,7 @@ public class QueryBuilderTest {
     public void should_not_attempt_to_serialize_bind_markers_in_collections() {
         BuiltStatement query = builder.insertInto("foo").value("v", Lists.newArrayList(1, 2, bindMarker()));
         assertThat(query.getQueryString()).isEqualTo("INSERT INTO foo (v) VALUES ([1,2,?]);");
-        assertThat(query.getValues()).isNullOrEmpty();
+        assertThat(query.getValueDefinitions()).isNullOrEmpty();
     }
 
     @Test(groups = "unit")
@@ -922,7 +922,7 @@ public class QueryBuilderTest {
     public void should_not_attempt_to_serialize_raw_values_in_collections() {
         BuiltStatement query = builder.insertInto("foo").value("v", ImmutableMap.of(1, raw("x")));
         assertThat(query.getQueryString()).isEqualTo("INSERT INTO foo (v) VALUES ({1:x});");
-        assertThat(query.getValues()).isNullOrEmpty();
+        assertThat(query.getValueDefinitions()).isNullOrEmpty();
     }
 
 }

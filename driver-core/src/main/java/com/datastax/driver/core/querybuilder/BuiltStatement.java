@@ -86,6 +86,7 @@ public abstract class BuiltStatement extends RegularStatement {
         StringBuilder sb;
 
         if (hasBindMarkers || forceNoValues) {
+            bind(); // clear any existing values
             sb = buildQueryString(null);
         } else {
             List<Object> values = new ArrayList<Object>();
@@ -94,7 +95,6 @@ public abstract class BuiltStatement extends RegularStatement {
             if (values.size() > 65535)
                 throw new IllegalArgumentException("Too many values for built statement, the maximum allowed is 65535");
 
-            this.values.clear();
             bind(values.toArray());
         }
 
@@ -184,21 +184,8 @@ public abstract class BuiltStatement extends RegularStatement {
     }
 
     @Override
-    public List<ValueDefinition> getValueDefinitions() {
+    protected void maybeRefreshValues() {
         maybeRebuildCache();
-        return super.getValueDefinitions();
-    }
-
-    @Override
-    public List<ByteBuffer> getValues() {
-        maybeRebuildCache();
-        return super.getValues();
-    }
-
-    @Override
-    public boolean hasValues() {
-        maybeRebuildCache();
-        return super.hasValues();
     }
 
     @Override
@@ -256,12 +243,6 @@ public abstract class BuiltStatement extends RegularStatement {
         this.forceNoValues = forceNoValues;
         this.dirty = true;
         return this;
-    }
-
-    @Override
-    protected Value getInternal(Object key) {
-        maybeRebuildCache();
-        return super.getInternal(key);
     }
 
     /**
@@ -352,13 +333,28 @@ public abstract class BuiltStatement extends RegularStatement {
         }
 
         @Override
-        public List<ByteBuffer> getValues() {
+        protected List<ByteBuffer> getValues() {
             return statement.getValues();
+        }
+
+        @Override
+        protected List<String> getValueNames() {
+            return statement.getValueNames();
         }
 
         @Override
         public boolean hasValues() {
             return statement.hasValues();
+        }
+
+        @Override
+        public boolean usesPositionalValues() {
+            return statement.usesPositionalValues();
+        }
+
+        @Override
+        public boolean usesNamedValues() {
+            return statement.usesNamedValues();
         }
 
         @Override

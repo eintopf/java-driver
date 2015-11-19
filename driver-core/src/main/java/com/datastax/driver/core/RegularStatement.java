@@ -120,19 +120,19 @@ public abstract class RegularStatement extends Statement implements GettableData
     }
 
     // A value that was set on the statement.
-    protected class Value {
+    private class Value {
 
         private final ValueDefinition definition;
 
         // The serialized form that will be sent to Cassandra alongside the query
-        final ByteBuffer bytes;
+        private final ByteBuffer bytes;
 
-        Value(ValueDefinition definition, ByteBuffer bytes) {
+        private Value(ValueDefinition definition, ByteBuffer bytes) {
             this.definition = definition;
             this.bytes = bytes;
         }
 
-        <V> V as(TypeToken<V> javaType) {
+        private <V> V as(TypeToken<V> javaType) {
             if (OBJECT_TYPE.equals(javaType)) { // we're handling a getObject() call
                 @SuppressWarnings("unchecked")
                 V v = (V)asObject(); // Since V is Object, this is a safe cast
@@ -143,19 +143,19 @@ public abstract class RegularStatement extends Statement implements GettableData
             }
         }
 
-        <V> V with(TypeCodec<V> codec) {
+        private <V> V with(TypeCodec<V> codec) {
             return codec.deserialize(bytes, protocolVersion);
         }
 
-        boolean isNull() {
+        private boolean isNull() {
             return bytes == null || bytes.remaining() == 0;
         }
 
-        protected <V> TypeCodec<V> codecFor(TypeToken<V> javaType) {
+        private <V> TypeCodec<V> codecFor(TypeToken<V> javaType) {
             return codecRegistry.codecFor(definition.type, javaType);
         }
 
-        protected Object asObject() {
+        private Object asObject() {
             if (isNull())
                 return null;
 
@@ -177,7 +177,7 @@ public abstract class RegularStatement extends Statement implements GettableData
 
     protected final CodecRegistry codecRegistry;
 
-    protected final SortedMap<Object, Value> values = new TreeMap<Object, Value>();
+    private final SortedMap<Object, Value> values = new TreeMap<Object, Value>();
 
     private ParameterMode parameterMode = null;
 
@@ -196,16 +196,24 @@ public abstract class RegularStatement extends Statement implements GettableData
     /**
      * Returns the definitions of the values that were set on this statement.
      * <p>
-     * Note that this information is based solely on the methods that were used to set values on the statement.
+     * This information is based solely on the methods that were used to set values on the statement.
      * In particular, there is no guarantee that the variables match the placeholders in the query string.
      * The only guarantee is that variables of a given statement are either all named or all positional, and
      * that if they are positional, the list will be sorted by ascending index.
      * <p>
      * To retrieve a given value, use the getter methods on this class.
+     * <p>
+     * Note: Values for a RegularStatement (i.e. if this method does not return
+     * an empty list) are not supported with the native protocol version 1: you
+     * will get an {@link UnsupportedProtocolVersionException} when submitting
+     * one if version 1 of the protocol is in use (i.e. if you've forced version
+     * 1 through {@link Cluster.Builder#withProtocolVersion} or you use
+     * Cassandra 1.2).
      *
      * @return the list of definitions.
      */
     public List<ValueDefinition> getValueDefinitions() {
+        maybeRefreshValues();
         List<ValueDefinition> definitions = Lists.newArrayListWithCapacity(values.size());
         for (Value value : values.values()) {
             definitions.add(value.definition);
@@ -217,18 +225,12 @@ public abstract class RegularStatement extends Statement implements GettableData
      * The values to use for this statement.
      * This method returns an empty list if
      * there are no values in this statement
-     * <p>
-     * Note: Values for a RegularStatement (i.e. if this method does not return
-     * an empty list) are not supported with the native protocol version 1: you
-     * will get an {@link UnsupportedProtocolVersionException} when submitting
-     * one if version 1 of the protocol is in use (i.e. if you've forced version
-     * 1 through {@link Cluster.Builder#withProtocolVersion} or you use
-     * Cassandra 1.2).
      *
      * @return The values to use for this statement; or an empty list,
      * if this statement has no values.
      */
-    public List<ByteBuffer> getValues() {
+    protected List<ByteBuffer> getValues() {
+        maybeRefreshValues();
         List<ByteBuffer> bbs = newArrayListWithCapacity(values.size());
         for (Value value : values.values()) {
             bbs.add(value.bytes);
@@ -245,7 +247,8 @@ public abstract class RegularStatement extends Statement implements GettableData
      *
      * @return The value names to use for this statement.
      */
-    public List<String> getValueNames() {
+    protected List<String> getValueNames() {
+        maybeRefreshValues();
         if (parameterMode != ParameterMode.NAMED)
             return Collections.emptyList();
         List<String> names = newArrayListWithCapacity(values.size());
@@ -263,7 +266,28 @@ public abstract class RegularStatement extends Statement implements GettableData
      * otherwise.
      */
     public boolean hasValues() {
+        maybeRefreshValues();
         return !values.isEmpty();
+    }
+
+    /**
+     * Whether this statement uses positional values.
+     *
+     * @return {@code true} if this statement has values and the values are positional, {@code false} otherwise.
+     */
+    public boolean usesPositionalValues() {
+        maybeRefreshValues();
+        return parameterMode == ParameterMode.POSITIONAL;
+    }
+
+    /**
+     * Whether this statement uses named values.
+     *
+     * @return {@code true} if this statement has values and the values are named, {@code false} otherwise.
+     */
+    public boolean usesNamedValues() {
+        maybeRefreshValues();
+        return parameterMode == ParameterMode.NAMED;
     }
 
     /**
@@ -282,6 +306,8 @@ public abstract class RegularStatement extends Statement implements GettableData
      *
      */
     public RegularStatement bind(Object... values) {
+        this.values.clear();
+        this.parameterMode = null;
         if (values != null) {
             if (values.length > 65535)
                 throw new IllegalArgumentException("Too many values, the maximum allowed is 65535");
@@ -998,7 +1024,7 @@ public abstract class RegularStatement extends Statement implements GettableData
     @Override
     public <V> RegularStatement set(int i, V v, TypeCodec<V> codec) {
         ByteBuffer bytes = codec.serialize(v, protocolVersion);
-        return setInternal(i, new Value(new ValueDefinition(i ,codec.getCqlType()), bytes));
+        return setInternal(i, new Value(new ValueDefinition(i, codec.getCqlType()), bytes));
     }
 
     @Override
@@ -1081,16 +1107,28 @@ public abstract class RegularStatement extends Statement implements GettableData
         return setToken("partition key token", v);
     }
 
-    protected Value getInternal(Object key) {
+    private Value getInternal(Object key) {
         checkParameterMode(key);
+        maybeRefreshValues();
         checkArgument(values.containsKey(key), "Parameter not set: %s", key);
         return values.get(key);
     }
 
-    protected RegularStatement setInternal(Object key, Value value) {
+    private RegularStatement setInternal(Object key, Value value) {
         checkParameterMode(key);
+
+        if (!values.containsKey(key) && values.size() == 65535)
+            throw new IllegalArgumentException("Too many values, the maximum allowed is 65535");
+
         values.put(key, value);
         return this;
+    }
+
+    protected void setInternal(Integer index, ByteBuffer rawValue, DataType type) {
+        setInternal(index, new Value(new ValueDefinition(index, type), rawValue));
+    }
+
+    protected void maybeRefreshValues() {
     }
 
     private void checkParameterMode(Object key) {
@@ -1100,5 +1138,4 @@ public abstract class RegularStatement extends Statement implements GettableData
         else
             checkArgument(this.parameterMode == parameterMode, "Cannot mix positional and named parameters in the same statement");
     }
-
 }

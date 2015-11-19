@@ -19,6 +19,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 
 import com.datastax.driver.core.CodecRegistry;
@@ -33,9 +34,6 @@ public class Batch extends BuiltStatement {
     private final List<RegularStatement> statements;
     private final boolean logged;
     private final Options usings;
-
-    // Only used when we add at last one statement that is not a BuiltStatement subclass
-    private int nonBuiltStatementValues;
 
     Batch(ProtocolVersion protocolVersion, CodecRegistry codecRegistry, RegularStatement[] statements, boolean logged) {
         super((String)null, protocolVersion, codecRegistry);
@@ -63,6 +61,9 @@ public class Batch extends BuiltStatement {
         }
         builder.append(' ');
 
+        int offset = 0;
+        int lastIndexSet = -1;
+
         for (RegularStatement stmt : statements) {
             if (stmt instanceof BuiltStatement) {
                 BuiltStatement bst = (BuiltStatement)stmt;
@@ -72,6 +73,21 @@ public class Batch extends BuiltStatement {
                 builder.append(str);
                 if (!str.trim().endsWith(";"))
                     builder.append(';');
+
+                // If there are non-built child statements, we're not collecting values.
+                // All variables in built statements will be inlined in the query string, but
+                // for non-built statements we need to copy the values to the parent batch.
+                assert variables == null;
+                if (stmt.hasValues()) {
+                    for (ValueDefinition definition : stmt.getValueDefinitions()) {
+                        int childIndex = definition.getIndex();
+                        assert childIndex >= 0 : "a built batch should not contain statements with named values";
+                        int batchIndex = offset + childIndex;
+                        setInternal(batchIndex, stmt.getBytesUnsafe(childIndex), definition.getType());
+                        lastIndexSet = batchIndex;
+                    }
+                    offset = lastIndexSet + 1;
+                }
             }
             builder.append(' ');
         }
@@ -89,6 +105,10 @@ public class Batch extends BuiltStatement {
      * are mixed.
      */
     public Batch add(RegularStatement statement) {
+        // We can't handle collisions if multiple statement use the same names, so avoid names altogether
+        Preconditions.checkArgument(!statement.usesNamedValues(),
+            "Statements with named values are not supported in built batches, use positional values instead");
+
         boolean isCounterOp = statement instanceof BuiltStatement && ((BuiltStatement) statement).isCounterOp();
 
         if (this.isCounterOp == null)
@@ -114,40 +134,6 @@ public class Batch extends BuiltStatement {
         checkForBindMarkers(null);
 
         return this;
-    }
-
-    @Override
-    public List<ByteBuffer> getValues() {
-        // if we don't have user-entered bind markers,
-        // all values will be collected at batch level
-        if (!hasBindMarkers)
-            return super.getValues();
-        // otherwise, at batch level we have no values,
-        // but some of the child statements might have those
-        List<ByteBuffer> values = Lists.newArrayList();
-        for (RegularStatement statement : statements) {
-            // skip built statements as we don't want
-            // their values, they will be formatted as CQL literals instead
-            if (statement instanceof BuiltStatement)
-                continue;
-            if (statement.hasValues())
-                values.addAll(statement.getValues());
-        }
-        return values;
-    }
-
-    @Override
-    public boolean hasValues() {
-        // if we don't have user-entered bind markers,
-        // all values will be collected at batch level
-        if (!hasBindMarkers)
-            return super.hasValues();
-        // otherwise, at batch level we have no values,
-        // but some of the child statements might have those
-        for (RegularStatement statement : statements)
-            if (statement.hasValues())
-                return true;
-        return false;
     }
 
     /**

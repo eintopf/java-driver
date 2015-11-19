@@ -101,7 +101,7 @@ public class QueryBuilderExecutionTest extends CCMBridge.PerClassSingleNodeClust
         RegularStatement built = builder.insertInto(TABLE1).value("k", "batchTest2").value("t", "val2");
         Batch batch = builder.batch().add(simple).add(built);
         // batch has a non built statement, so no bind markers are generated
-        assertThat(batch.getValues()).isEmpty();
+        assertThat(batch.getValueDefinitions()).isEmpty();
         assertThat(batch.getQueryString()).isEqualTo("BEGIN BATCH INSERT INTO test1 (k,t) VALUES ('batchTest1','val1'); INSERT INTO test1 (k,t) VALUES ('batchTest2','val2'); APPLY BATCH;");
         session.execute(batch);
 
@@ -123,7 +123,7 @@ public class QueryBuilderExecutionTest extends CCMBridge.PerClassSingleNodeClust
         RegularStatement built = builder.insertInto(TABLE1).value("k", "batchTest2").value("t", "val2");
         Batch batch = builder.batch().add(simple).add(built);
         // batch has a non built statement, so no additional bind markers are generated
-        assertThat(batch.getValues()).hasSize(1);
+        assertThat(batch.getValueDefinitions()).hasSize(1);
         assertThat(batch.getQueryString()).isEqualTo("BEGIN BATCH INSERT INTO test1 (k,t) VALUES ('batchTest1',?); INSERT INTO test1 (k,t) VALUES ('batchTest2','val2'); APPLY BATCH;");
         session.execute(batch);
 

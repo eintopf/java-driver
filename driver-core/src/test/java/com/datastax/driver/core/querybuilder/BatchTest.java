@@ -110,6 +110,31 @@ public class BatchTest {
         assertThat(batch.getString(1)).isEqualTo("key2");
     }
 
+    @Test(groups = "unit")
+    public void should_preserve_gaps_when_renumbering_indices_of_simple_statements() {
+        // Given
+        SimpleStatement insert1 = newSimpleStatement("INSERT INTO foo (k, v1, v2) VALUES (?, ?, ?)");
+        insert1.setString(0, "k in insert1");
+        insert1.setString(2, "v2 in insert1");
+        SimpleStatement insert2 = newSimpleStatement("INSERT INTO foo (k, v1, v2) VALUES (?, ?, ?)");
+        insert2.setString(1, "v1 in insert2");
+        insert2.setString(2, "v2 in insert2");
+
+        // When
+        Batch batch = builder.batch(insert1, insert2);
+
+        // Then
+        assertThat(batch.getQueryString()).isEqualTo("BEGIN BATCH "
+            + "INSERT INTO foo (k, v1, v2) VALUES (?, ?, ?); "
+            + "INSERT INTO foo (k, v1, v2) VALUES (?, ?, ?); "
+            + "APPLY BATCH;");
+        assertThat(batch.getValueDefinitions()).hasSize(4);
+        assertThat(batch.getString(0)).isEqualTo("k in insert1");
+        assertThat(batch.getString(2)).isEqualTo("v2 in insert1");
+        assertThat(batch.getString(4)).isEqualTo("v1 in insert2");
+        assertThat(batch.getString(5)).isEqualTo("v2 in insert2");
+    }
+
     @Test(groups = "unit", expectedExceptions = IllegalArgumentException.class)
     public void should_refuse_simple_statements_with_named_values() {
         // Given

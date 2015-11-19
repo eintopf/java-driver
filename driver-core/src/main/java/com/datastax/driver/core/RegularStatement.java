@@ -21,6 +21,7 @@ import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.reflect.TypeToken;
 
@@ -177,7 +178,7 @@ public abstract class RegularStatement extends Statement implements GettableData
 
     protected final CodecRegistry codecRegistry;
 
-    private final SortedMap<Object, Value> values = new TreeMap<Object, Value>();
+    private final NavigableMap<Object, Value> values = new TreeMap<Object, Value>();
 
     private ParameterMode parameterMode = null;
 
@@ -1124,8 +1125,30 @@ public abstract class RegularStatement extends Statement implements GettableData
         return this;
     }
 
-    protected void setInternal(Integer index, ByteBuffer rawValue, DataType type) {
-        setInternal(index, new Value(new ValueDefinition(index, type), rawValue));
+    /**
+     * Copy the values of another statement into this statement.
+     * <p>
+     * Both statements must use positional values (or no values at all). If this statement already contains values, the new
+     * values will be inserted starting at the index following the current max index.
+     *
+     * @param that the other statement.
+     */
+    protected void copyValues(RegularStatement that) {
+        if (!that.hasValues())
+            return;
+
+        Preconditions.checkArgument(parameterMode != ParameterMode.NAMED && that.usesPositionalValues());
+
+        int offset = values.isEmpty()
+            ? 0
+            : (Integer)(values.lastEntry().getKey()) + 1;
+
+        for (ValueDefinition definition : that.getValueDefinitions()) {
+            int thatIndex = definition.getIndex();
+            assert thatIndex >= 0; // from usesPositionalValues check above
+            int thisIndex = offset + thatIndex;
+            setInternal(thisIndex, new Value(new ValueDefinition(thisIndex, definition.getType()), that.getBytesUnsafe(thatIndex)));
+        }
     }
 
     protected void maybeRefreshValues() {

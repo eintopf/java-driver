@@ -61,9 +61,6 @@ public class Batch extends BuiltStatement {
         }
         builder.append(' ');
 
-        int offset = 0;
-        int lastIndexSet = -1;
-
         for (RegularStatement stmt : statements) {
             if (stmt instanceof BuiltStatement) {
                 BuiltStatement bst = (BuiltStatement)stmt;
@@ -78,16 +75,7 @@ public class Batch extends BuiltStatement {
                 // All variables in built statements will be inlined in the query string, but
                 // for non-built statements we need to copy the values to the parent batch.
                 assert variables == null;
-                if (stmt.hasValues()) {
-                    for (ValueDefinition definition : stmt.getValueDefinitions()) {
-                        int childIndex = definition.getIndex();
-                        assert childIndex >= 0 : "a built batch should not contain statements with named values";
-                        int batchIndex = offset + childIndex;
-                        setInternal(batchIndex, stmt.getBytesUnsafe(childIndex), definition.getType());
-                        lastIndexSet = batchIndex;
-                    }
-                    offset = lastIndexSet + 1;
-                }
+                this.copyValues(stmt);
             }
             builder.append(' ');
         }
